@@ -22,7 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-
+#include "lfs.h"
+#include "nor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,8 +46,12 @@ SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
 
-/* USER CODE BEGIN PV */
+TIM_HandleTypeDef htim2;
 
+/* USER CODE BEGIN PV */
+nor_t Nor;
+lfs_t Lfs;
+struct lfs_config LfsConfig = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,6 +59,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -61,6 +67,124 @@ static void MX_SPI1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/** Func. Memória NOR **/
+
+volatile uint8_t DmaEnd = 0;
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi){
+	DmaEnd = 1;
+}
+
+void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi){
+	DmaEnd = 1;
+}
+
+void nor_delay_us(uint32_t us){
+	if (us >= __HAL_TIM_GET_AUTORELOAD(&htim2)){
+		us = __HAL_TIM_GET_AUTORELOAD(&htim2) - 1;
+	}
+	__HAL_TIM_SET_COUNTER(&htim2, 0);
+	HAL_TIM_Base_Start(&htim2);
+	while (__HAL_TIM_GET_COUNTER(&htim2) < us);
+	HAL_TIM_Base_Stop(&htim2);
+}
+
+void nor_cs_assert(){
+	HAL_GPIO_WritePin(W25Q_CS_GPIO_Port, W25Q_CS_Pin, GPIO_PIN_RESET);
+}
+
+void nor_cs_deassert(){
+	HAL_GPIO_WritePin(W25Q_CS_GPIO_Port, W25Q_CS_Pin, GPIO_PIN_SET);
+}
+
+void nor_spi_tx(uint8_t *pData, uint32_t Size){
+//	HAL_SPI_Transmit(&hspi1, pData, Size, 100);
+	DmaEnd = 0;
+	HAL_SPI_Transmit_DMA(&hspi1, pData, Size);
+	while (DmaEnd == 0);
+}
+
+void nor_spi_rx(uint8_t *pData, uint32_t Size){
+//	HAL_SPI_Receive(&hspi1, pData, Size, 100);
+	DmaEnd = 0;
+	HAL_SPI_Receive_DMA(&hspi1, pData, Size);
+	while (DmaEnd == 0);
+}
+
+void __init_nor(){
+	Nor.config.CsAssert = nor_cs_assert;
+	Nor.config.CsDeassert = nor_cs_deassert;
+	Nor.config.DelayUs = nor_delay_us;
+	Nor.config.SpiRxFxn = nor_spi_rx;
+	Nor.config.SpiTxFxn = nor_spi_tx;
+
+	NOR_Init(&Nor);
+}
+
+/** Start LittleFs **/
+
+int _fs_read(const struct lfs_config *c, lfs_block_t block,
+            lfs_off_t off, void *buffer, lfs_size_t size){
+
+	if (NOR_ReadSector(&Nor, buffer, block, off, size) == NOR_OK){
+		return 0;
+	}
+
+	return LFS_ERR_IO;
+}
+
+int _fs_write(const struct lfs_config *c, lfs_block_t block,
+        lfs_off_t off, const void *buffer, lfs_size_t size){
+
+	if (NOR_WriteSector(&Nor, buffer, block, off, size) == NOR_OK){
+		return 0;
+	}
+
+	return LFS_ERR_IO;
+}
+
+int _fs_erase(const struct lfs_config *c, lfs_block_t block){
+	if (NOR_EraseSector(&Nor, block) == NOR_OK){
+		return 0;
+	}
+
+	return LFS_ERR_IO;
+}
+
+int _fs_sync(const struct lfs_config *c){
+	return 0;
+}
+
+void __init_littefs(){
+	int Error;
+
+	LfsConfig.read_size = 64;
+	LfsConfig.prog_size = 64;
+	LfsConfig.block_size = Nor.info.u16SectorSize;
+	LfsConfig.block_count = Nor.info.u32SectorCount;
+	LfsConfig.cache_size = Nor.info.u16PageSize;
+	LfsConfig.lookahead_size = Nor.info.u32SectorCount/8;
+	LfsConfig.block_cycles = 15000;
+
+	LfsConfig.read = _fs_read;
+	LfsConfig.prog = _fs_write;
+	LfsConfig.erase = _fs_erase;
+	LfsConfig.sync = _fs_sync;
+
+	Error = lfs_mount(&Lfs, &LfsConfig);
+	if (Errorf != LFS_ERR_OK){
+		lfs_format(&Lfs, &LfsConfig);
+		Error = lfs_mount(&Lfs, &LfsConfig);
+		if (Error != LFS_ERR_OK){
+			Error_Handler();
+		}
+	}
+}
+
+void __init_storage(){
+	__init_nor();
+	__init_littefs();
+}
 /* USER CODE END 0 */
 
 /**
@@ -93,8 +217,11 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(100);
 
+  __init_storage();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -188,6 +315,51 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 99;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
