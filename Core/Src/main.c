@@ -33,7 +33,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+typedef struct{
+	uint32_t secCount;
+	uint32_t bootCount;
+}app_count_t;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,6 +52,8 @@ DMA_HandleTypeDef hdma_spi1_tx;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
+app_count_t Counter = {0};
+
 nor_t Nor;
 lfs_t Lfs;
 struct lfs_config LfsConfig = {0};
@@ -90,11 +95,11 @@ void nor_delay_us(uint32_t us){
 }
 
 void nor_cs_assert(){
-	HAL_GPIO_WritePin(W25Q_CS_GPIO_Port, W25Q_CS_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(W25_CS_GPIO_Port, W25_CS_Pin, GPIO_PIN_RESET);
 }
 
 void nor_cs_deassert(){
-	HAL_GPIO_WritePin(W25Q_CS_GPIO_Port, W25Q_CS_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(W25_CS_GPIO_Port, W25_CS_Pin, GPIO_PIN_SET);
 }
 
 void nor_spi_tx(uint8_t *pData, uint32_t Size){
@@ -118,7 +123,9 @@ void __init_nor(){
 	Nor.config.SpiRxFxn = nor_spi_rx;
 	Nor.config.SpiTxFxn = nor_spi_tx;
 
-	NOR_Init(&Nor);
+	if (NOR_Init(&Nor) != NOR_OK){
+		Error_Handler();
+	}
 }
 
 /** Start LittleFs **/
@@ -126,7 +133,7 @@ void __init_nor(){
 int _fs_read(const struct lfs_config *c, lfs_block_t block,
             lfs_off_t off, void *buffer, lfs_size_t size){
 
-	if (NOR_ReadSector(&Nor, buffer, block, off, size) == NOR_OK){
+	if (NOR_ReadSector(&Nor, (uint8_t*)buffer, block, off, size) == NOR_OK){
 		return 0;
 	}
 
@@ -136,7 +143,7 @@ int _fs_read(const struct lfs_config *c, lfs_block_t block,
 int _fs_write(const struct lfs_config *c, lfs_block_t block,
         lfs_off_t off, const void *buffer, lfs_size_t size){
 
-	if (NOR_WriteSector(&Nor, buffer, block, off, size) == NOR_OK){
+	if (NOR_WriteSector(&Nor, (uint8_t*)buffer, block, off, size) == NOR_OK){
 		return 0;
 	}
 
@@ -172,7 +179,7 @@ void __init_littefs(){
 	LfsConfig.sync = _fs_sync;
 
 	Error = lfs_mount(&Lfs, &LfsConfig);
-	if (Errorf != LFS_ERR_OK){
+	if (Error != LFS_ERR_OK){
 		lfs_format(&Lfs, &LfsConfig);
 		Error = lfs_mount(&Lfs, &LfsConfig);
 		if (Error != LFS_ERR_OK){
@@ -194,7 +201,7 @@ void __init_storage(){
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	lfs_file_t File;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -222,12 +229,22 @@ int main(void)
   HAL_Delay(100);
 
   __init_storage();
+  lfs_file_open(&Lfs, &File, "count.bin", LFS_O_RDWR | LFS_O_CREAT);
+  lfs_file_read(&Lfs, &File, &Counter, sizeof(app_count_t));
+  lfs_file_close(&Lfs, &File);
+
+  Counter.bootCount += 1;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  lfs_file_open(&Lfs, &File, "count.bin", LFS_O_RDWR | LFS_O_CREAT);
+	  lfs_file_write(&Lfs, &File, &Counter, sizeof(app_count_t));
+	  lfs_file_close(&Lfs, &File);
+	  HAL_Delay(1000);
+	  Counter.secCount += 1;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
