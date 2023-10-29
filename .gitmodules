@@ -1,0 +1,6 @@
+[submodule "/libs/littlefs"]
+	path = /libs/littlefs
+	url = https://github.com/littlefs-project/littlefs.git
+[submodule "/libs/nor"]
+	path = /libs/nor
+	url = https://github.com/Pablo-Jean/Nor-Flash-Driver.git
