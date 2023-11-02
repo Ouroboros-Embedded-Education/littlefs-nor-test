@@ -50,6 +50,7 @@
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
 									<listOptionValue builtIn="false" value="../libs/nor"/>
 									<listOptionValue builtIn="false" value="../libs/littlefs"/>
+									<listOptionValue builtIn="false" value="../libs/lcd/src"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.2238255" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
@@ -77,7 +78,7 @@
 					</folderInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
-						<entry excluding="littlefs/tests|littlefs/scripts|littlefs/runners|littlefs/benches|littlefs/bd" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="libs"/>
+						<entry excluding="lcd/src/platform/platform_stm32f4.c|lcd/src/platform/platform_stm32f1.c|lcd/src/platform/platform_blank.c|lcd/imgs|lcd/examples|littlefs/tests|littlefs/scripts|littlefs/runners|littlefs/benches|littlefs/bd" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="libs"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>
 				</configuration>
@@ -176,4 +177,5 @@
 			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
 	</storageModule>
+	<storageModule moduleId="refreshScope"/>
 </cproject>
